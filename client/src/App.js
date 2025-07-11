@@ -16,7 +16,7 @@ const LoginPage = ({ onLoginSuccess, onNavigateToRegister }) => {
         setError('');
         try {
             // This URL must match the address of your running server
-            const response = await axios.post('http://localhost:5000/api/login', { email, password });
+            const response = await axios.post('https://sterling-pay-final-deployment.onrender.com', { email, password });
             onLoginSuccess(response.data.token);
         } catch (err) {
             setError('Invalid email or password. Please try again.');
@@ -73,7 +73,7 @@ const RegisterPage = ({ onNavigateToLogin }) => {
         setError('');
         setSuccess('');
         try {
-            await axios.post('http://localhost:5000/api/register', { fullName, email, password });
+            await axios.post('https://sterling-pay-final-deployment.onrender.com', { fullName, email, password });
             setSuccess('Registration successful! Please log in.');
             setTimeout(() => {
                 onNavigateToLogin();
