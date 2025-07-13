@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 // This line has been cleaned up to only import the icons we actually use.
-import { Globe, LogOut, UserPlus, Home, Settings as SettingsIcon } from 'lucide-react';
+import { Globe, LogOut, UserPlus, Home, Repeat, Settings as SettingsIcon } from 'lucide-react';
 
 // --- HELPER to get the auth token ---
 const getAuthToken = () => localStorage.getItem('sterling-pay-token');
+
+// --- !! THE CORRECT LIVE SERVER URL !! ---
+const API_BASE_URL = 'https://sterling-pay-server-live.onrender.com';
 
 // --- LOGIN COMPONENT ---
 const LoginPage = ({ onLoginSuccess, onNavigateToRegister }) => {
@@ -18,7 +21,8 @@ const LoginPage = ({ onLoginSuccess, onNavigateToRegister }) => {
         setLoading(true);
         setError('');
         try {
-            const response = await axios.post('https://sterling-pay-live-appss.onrender.com', { email, password });
+            // Corrected URL with path
+            const response = await axios.post(`${API_BASE_URL}/api/login`, { email, password });
             onLoginSuccess(response.data.token);
         } catch (err) {
             setError('Invalid email or password. Please try again.');
@@ -75,7 +79,8 @@ const RegisterPage = ({ onNavigateToLogin }) => {
         setError('');
         setSuccess('');
         try {
-            await axios.post('https://sterling-pay-live-appss.onrender.com', { fullName, email, password });
+            // Corrected URL with path
+            await axios.post(`${API_BASE_URL}/api/register`, { fullName, email, password });
             setSuccess('Registration successful! Please log in.');
             setTimeout(() => {
                 onNavigateToLogin();
@@ -134,7 +139,8 @@ const Dashboard = () => {
 
             try {
                 const config = { headers: { Authorization: `Bearer ${token}` } };
-                const response = await axios.get('https://sterling-pay-live-appss.onrender.com', config);
+                // Corrected URL with path
+                const response = await axios.get(`${API_BASE_URL}/api/wallets`, config);
                 setWallets(response.data);
             } catch (err) {
                 console.error("Could not fetch wallets", err);
@@ -167,77 +173,67 @@ const Dashboard = () => {
     );
 };
 
-// --- SETTINGS PAGE COMPONENT ---
-const SettingsPage = () => {
-    const [profile, setProfile] = useState({ fullName: '', email: '' });
+// --- TRANSFER PAGE COMPONENT ---
+const TransferPage = () => {
+    const [recipientEmail, setRecipientEmail] = useState('');
+    const [amount, setAmount] = useState('');
+    const [currency, setCurrency] = useState('GBP');
     const [message, setMessage] = useState('');
     const [messageType, setMessageType] = useState('');
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
 
-    const fetchProfile = useCallback(async () => {
-        const token = getAuthToken();
-        if (!token) { setLoading(false); return; }
-        try {
-            const config = { headers: { Authorization: `Bearer ${token}` } };
-            const response = await axios.get('https://sterling-pay-live-appss.onrender.com', config);
-            setProfile({ fullName: response.data.full_name, email: response.data.email });
-        } catch (err) {
-            console.error("Could not fetch profile", err);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        fetchProfile();
-    }, [fetchProfile]);
-
-    const handleProfileUpdate = async (e) => {
+    const handleTransfer = async (e) => {
         e.preventDefault();
-        setMessage('');
         setLoading(true);
+        setMessage('');
         const token = getAuthToken();
         try {
             const config = { headers: { Authorization: `Bearer ${token}` } };
-            const response = await axios.put('https://sterling-pay-live-appss.onrender.com', { fullName: profile.fullName }, config);
+            const transferData = { recipientEmail, amount: parseFloat(amount), currency };
+            // Corrected URL with path
+            const response = await axios.post(`${API_BASE_URL}/api/transfer`, transferData, config);
             setMessage(response.data.message);
             setMessageType('success');
+            setRecipientEmail('');
+            setAmount('');
         } catch (err) {
-            setMessage(err.response?.data?.error || 'Failed to update profile.');
+            setMessage(err.response?.data?.error || 'Transfer failed.');
             setMessageType('error');
         } finally {
             setLoading(false);
         }
     };
 
-    if (loading && !profile.email) return <div style={{ padding: '40px' }}>Loading settings...</div>;
-
     return (
         <div style={{ padding: '40px' }}>
-            <h2 style={{ fontSize: '1.875rem', fontWeight: 'bold', color: '#1f2937', marginBottom: '24px' }}>Settings</h2>
+            <h2 style={{ fontSize: '1.875rem', fontWeight: 'bold', color: '#1f2937', marginBottom: '24px' }}>Send Money</h2>
             <div style={{ maxWidth: '600px', backgroundColor: 'white', padding: '24px', borderRadius: '8px', boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1)' }}>
-                <h3 style={{ fontSize: '1.25rem', fontWeight: '600' }}>Your Profile</h3>
-                <form onSubmit={handleProfileUpdate} style={{ marginTop: '16px' }}>
+                <p style={{ color: '#4b5563', marginBottom: '16px' }}>Send money instantly to any other SterlingPay user.</p>
+                <form onSubmit={handleTransfer}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                         <div>
-                            <label htmlFor="email" style={{ display: 'block', marginBottom: '4px', fontSize: '0.875rem', fontWeight: '500' }}>Email Address</label>
-                            <input id="email" type="email" value={profile.email} disabled style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '5px', width: '100%', boxSizing: 'border-box', backgroundColor: '#f3f4f6', cursor: 'not-allowed' }} />
+                            <label htmlFor="recipientEmail" style={{ display: 'block', marginBottom: '4px', fontSize: '0.875rem', fontWeight: '500' }}>Recipient's Email</label>
+                            <input id="recipientEmail" type="email" placeholder="friend@example.com" value={recipientEmail} onChange={e => setRecipientEmail(e.target.value)} required style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '5px', width: '100%', boxSizing: 'border-box' }} />
                         </div>
                         <div>
-                            <label htmlFor="fullName" style={{ display: 'block', marginBottom: '4px', fontSize: '0.875rem', fontWeight: '500' }}>Full Name</label>
-                            <input id="fullName" type="text" value={profile.fullName} onChange={e => setProfile({...profile, fullName: e.target.value})} required style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '5px', width: '100%', boxSizing: 'border-box' }} />
+                            <label htmlFor="amount" style={{ display: 'block', marginBottom: '4px', fontSize: '0.875rem', fontWeight: '500' }}>Amount</label>
+                            <div style={{ display: 'flex' }}>
+                                <select value={currency} onChange={e => setCurrency(e.target.value)} style={{ padding: '10px', border: '1px solid #ccc', borderRight: 'none', borderRadius: '5px 0 0 5px' }}>
+                                    <option>GBP</option><option>USD</option><option>EUR</option>
+                                </select>
+                                <input id="amount" type="number" placeholder="100.00" value={amount} onChange={e => setAmount(e.target.value)} required style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '0 5px 5px 0', width: '100%' }} />
+                            </div>
                         </div>
                     </div>
                     {message && <p style={{ marginTop: '16px', color: messageType === 'success' ? '#16a34a' : '#ef4444', fontWeight: '500' }}>{message}</p>}
-                    <button type="submit" disabled={loading} style={{ marginTop: '24px', padding: '12px 16px', border: 'none', borderRadius: '8px', color: 'white', backgroundColor: '#0A2342', cursor: 'pointer' }}>
-                        {loading ? 'Saving...' : 'Save Changes'}
+                    <button type="submit" disabled={loading} style={{ marginTop: '24px', width: '100%', padding: '12px 16px', border: 'none', borderRadius: '8px', color: 'white', backgroundColor: '#0A2342', cursor: 'pointer' }}>
+                        {loading ? 'Sending...' : 'Send Money'}
                     </button>
                 </form>
             </div>
         </div>
     );
 };
-
 
 // --- MAIN APP COMPONENT ---
 const MainApp = ({ onLogout, userEmail }) => {
@@ -246,7 +242,7 @@ const MainApp = ({ onLogout, userEmail }) => {
     const renderPage = () => {
         switch (activePage) {
             case 'dashboard': return <Dashboard />;
-            case 'settings': return <SettingsPage />;
+            case 'transfer': return <TransferPage />;
             default: return <Dashboard />;
         }
     };
@@ -260,7 +256,7 @@ const MainApp = ({ onLogout, userEmail }) => {
                 </div>
                 <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <button onClick={() => setActivePage('dashboard')} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', borderRadius: '8px', textAlign: 'left', background: activePage === 'dashboard' ? '#0A2342' : 'transparent', color: activePage === 'dashboard' ? 'white' : '#374151' }}><Home size={20} /> Dashboard</button>
-                    <button onClick={() => setActivePage('settings')} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', borderRadius: '8px', textAlign: 'left', background: activePage === 'settings' ? '#0A2342' : 'transparent', color: activePage === 'settings' ? 'white' : '#374151' }}><SettingsIcon size={20} /> Settings</button>
+                    <button onClick={() => setActivePage('transfer')} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', borderRadius: '8px', textAlign: 'left', background: activePage === 'transfer' ? '#0A2342' : 'transparent', color: activePage === 'transfer' ? 'white' : '#374151' }}><Send size={20} /> Transfer</button>
                 </nav>
                 <button onClick={onLogout} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', borderRadius: '8px', textAlign: 'left', color: '#4b5563' }}><LogOut size={20} /> Logout</button>
             </aside>
