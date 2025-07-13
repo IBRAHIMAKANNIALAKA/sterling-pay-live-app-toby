@@ -1,5 +1,5 @@
 // --- SterlingPay Pro Server ---
-// Added Peer-to-Peer (P2P) Transfer Feature
+// Added Profile Management Feature
 
 // 1. Import required packages
 const express = require('express');
@@ -7,8 +7,6 @@ const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { authenticator } = require('otplib');
-const qrcode = require('qrcode');
 
 // 2. Initialize the Express App
 const app = express();
@@ -144,92 +142,42 @@ app.get('/api/wallets', authMiddleware, (req, res) => {
     });
 });
 
-app.post('/api/exchange', authMiddleware, (req, res) => {
+// --- !! NEW PROFILE MANAGEMENT ROUTES !! ---
+
+// Get current user's profile info (Protected)
+app.get('/api/profile', authMiddleware, (req, res) => {
     const userId = req.user.id;
-    const { fromCurrency, toCurrency, fromAmount } = req.body;
-    const exchangeRates = { 'GBP_USD': 1.25, 'USD_GBP': 0.80, 'GBP_EUR': 1.18, 'EUR_GBP': 0.85, 'USD_EUR': 0.94, 'EUR_USD': 1.06 };
-    const rate = exchangeRates[`${fromCurrency}_${toCurrency}`];
-    if (!rate) return res.status(400).json({ error: "Currency exchange not supported." });
-    const toAmount = fromAmount * rate;
-    db.serialize(() => {
-        db.run("BEGIN TRANSACTION");
-        const checkBalanceSql = `SELECT balance FROM wallets WHERE user_id = ? AND currency = ?`;
-        db.get(checkBalanceSql, [userId, fromCurrency], (err, fromWallet) => {
-            if (err || !fromWallet || fromWallet.balance < fromAmount) {
-                db.run("ROLLBACK");
-                return res.status(400).json({ error: "Insufficient funds." });
-            }
-            const updateFromSql = `UPDATE wallets SET balance = balance - ? WHERE user_id = ? AND currency = ?`;
-            db.run(updateFromSql, [fromAmount, userId, fromCurrency]);
-            const updateToSql = `UPDATE wallets SET balance = balance + ? WHERE user_id = ? AND currency = ?`;
-            db.run(updateToSql, [toAmount, userId, toCurrency]);
-            const logSql = `INSERT INTO transactions (user_id, type, amount, currency, details) VALUES (?, ?, ?, ?, ?)`;
-            const details = `Exchanged ${fromAmount} ${fromCurrency} to ${toAmount.toFixed(2)} ${toCurrency}`;
-            db.run(logSql, [userId, 'exchange', fromAmount, fromCurrency, details]);
-            db.run("COMMIT", (err) => {
-                if (err) return res.status(500).json({ error: "Transaction failed." });
-                res.json({ success: true, message: "Exchange successful." });
-            });
-        });
+    const sql = `SELECT id, full_name, email FROM users WHERE id = ?`;
+
+    db.get(sql, [userId], (err, row) => {
+        if (err) {
+            return res.status(500).json({ error: "Could not retrieve profile." });
+        }
+        if (!row) {
+            return res.status(404).json({ error: "User profile not found." });
+        }
+        res.json(row);
     });
 });
 
-// --- !! NEW P2P TRANSFER ROUTE !! ---
-app.post('/api/transfer', authMiddleware, (req, res) => {
-    const senderId = req.user.id;
-    const { recipientEmail, amount, currency } = req.body;
+// Update current user's profile info (Protected)
+app.put('/api/profile', authMiddleware, (req, res) => {
+    const userId = req.user.id;
+    const { fullName } = req.body;
 
-    // Find the recipient user by their email
-    const findRecipientSql = `SELECT * FROM users WHERE email = ?`;
-    db.get(findRecipientSql, [recipientEmail], (err, recipient) => {
-        if (err) return res.status(500).json({ error: "Server error finding recipient." });
-        if (!recipient) return res.status(404).json({ error: "Recipient not found." });
-        if (recipient.id === senderId) return res.status(400).json({ error: "You cannot send money to yourself." });
+    if (!fullName) {
+        return res.status(400).json({ error: "Full name is required." });
+    }
 
-        const recipientId = recipient.id;
-
-        // Perform the transfer within a secure database transaction
-        db.serialize(() => {
-            db.run("BEGIN TRANSACTION");
-
-            // 1. Check sender's balance
-            const checkBalanceSql = `SELECT balance FROM wallets WHERE user_id = ? AND currency = ?`;
-            db.get(checkBalanceSql, [senderId, currency], (err, senderWallet) => {
-                if (err || !senderWallet || senderWallet.balance < amount) {
-                    db.run("ROLLBACK");
-                    return res.status(400).json({ error: "Insufficient funds." });
-                }
-
-                // 2. Subtract from sender
-                const subtractSql = `UPDATE wallets SET balance = balance - ? WHERE user_id = ? AND currency = ?`;
-                db.run(subtractSql, [amount, senderId, currency]);
-
-                // 3. Add to recipient
-                const addSql = `UPDATE wallets SET balance = balance + ? WHERE user_id = ? AND currency = ?`;
-                db.run(addSql, [amount, recipientId, currency]);
-
-                // 4. Log transaction for sender
-                const logSenderSql = `INSERT INTO transactions (user_id, type, amount, currency, details) VALUES (?, ?, ?, ?, ?)`;
-                const senderDetails = `Sent to ${recipient.full_name} (${recipientEmail})`;
-                db.run(logSenderSql, [senderId, 'sent', -amount, currency, senderDetails]);
-                
-                // 5. Log transaction for recipient
-                const logRecipientSql = `INSERT INTO transactions (user_id, type, amount, currency, details) VALUES (?, ?, ?, ?, ?)`;
-                const recipientDetails = `Received from ${req.user.email}`; // Assuming email is on req.user
-                db.run(logRecipientSql, [recipientId, 'received', amount, currency, recipientDetails]);
-
-
-                db.run("COMMIT", (err) => {
-                    if (err) {
-                        db.run("ROLLBACK");
-                        return res.status(500).json({ error: "Transfer failed." });
-                    }
-                    res.json({ success: true, message: `Successfully sent ${amount} ${currency} to ${recipientEmail}` });
-                });
-            });
-        });
+    const sql = `UPDATE users SET full_name = ? WHERE id = ?`;
+    db.run(sql, [fullName, userId], function (err) {
+        if (err) {
+            return res.status(500).json({ error: "Could not update profile." });
+        }
+        res.json({ success: true, message: "Profile updated successfully." });
     });
 });
+// --- END NEW ROUTES ---
 
 
 // --- Start the Server ---
