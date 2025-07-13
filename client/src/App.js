@@ -6,8 +6,9 @@ import { Globe, LogOut, UserPlus, Home, Repeat, Settings as SettingsIcon, Send }
 // --- HELPER to get the auth token ---
 const getAuthToken = () => localStorage.getItem('sterling-pay-token');
 
-// --- !! THE CORRECT LIVE SERVER URL !! ---
-const API_BASE_URL = 'https://sterling-pay-server-live.onrender.com';
+// --- !! IMPORTANT !! ---
+// --- Replace this with your actual live URL from Render.com ---
+const API_BASE_URL = 'https://YOUR_RENDER_URL_HERE.onrender.com';
 
 // --- LOGIN COMPONENT ---
 const LoginPage = ({ onLoginSuccess, onNavigateToRegister }) => {
@@ -21,7 +22,6 @@ const LoginPage = ({ onLoginSuccess, onNavigateToRegister }) => {
         setLoading(true);
         setError('');
         try {
-            // Corrected URL with path
             const response = await axios.post(`${API_BASE_URL}/api/login`, { email, password });
             onLoginSuccess(response.data.token);
         } catch (err) {
@@ -79,7 +79,6 @@ const RegisterPage = ({ onNavigateToLogin }) => {
         setError('');
         setSuccess('');
         try {
-            // Corrected URL with path
             await axios.post(`${API_BASE_URL}/api/register`, { fullName, email, password });
             setSuccess('Registration successful! Please log in.');
             setTimeout(() => {
@@ -232,7 +231,6 @@ const TransferPage = () => {
         </div>
     );
 };
-
 
 // --- MAIN APP COMPONENT ---
 const MainApp = ({ onLogout, userEmail }) => {
