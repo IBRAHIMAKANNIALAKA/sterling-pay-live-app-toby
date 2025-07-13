@@ -1,5 +1,5 @@
 // --- SterlingPay Pro Server ---
-// Phase 4: Adding Two-Factor Authentication (2FA) Verify
+// Added Peer-to-Peer (P2P) Transfer Feature
 
 // 1. Import required packages
 const express = require('express');
@@ -24,15 +24,14 @@ const db = new sqlite3.Database('./sterlingpay.db', (err) => {
   } else {
     console.log('Connected to the local SQLite database.');
     db.serialize(() => {
-        // Create the users table if it doesn't exist
         db.run(`CREATE TABLE IF NOT EXISTS users (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           full_name TEXT NOT NULL,
           email TEXT NOT NULL UNIQUE,
-          password TEXT NOT NULL
+          password TEXT NOT NULL,
+          two_fa_secret TEXT,
+          two_fa_enabled BOOLEAN DEFAULT FALSE
         )`);
-
-        // This checks for and adds the new columns if they are missing.
         db.run("ALTER TABLE users ADD COLUMN two_fa_secret TEXT", () => {});
         db.run("ALTER TABLE users ADD COLUMN two_fa_enabled BOOLEAN DEFAULT FALSE", () => {});
         
@@ -175,59 +174,60 @@ app.post('/api/exchange', authMiddleware, (req, res) => {
     });
 });
 
-// --- 2FA ROUTES ---
+// --- !! NEW P2P TRANSFER ROUTE !! ---
+app.post('/api/transfer', authMiddleware, (req, res) => {
+    const senderId = req.user.id;
+    const { recipientEmail, amount, currency } = req.body;
 
-// Generate a 2FA secret and QR code for the user (Protected)
-app.post('/api/2fa/generate', authMiddleware, (req, res) => {
-    const userId = req.user.id;
-    const userEmail = req.user.email;
-    const secret = authenticator.generateSecret();
-    const otpauth = authenticator.keyuri(userEmail, 'SterlingPay', secret);
-    const sql = `UPDATE users SET two_fa_secret = ? WHERE id = ?`;
-    db.run(sql, [secret, userId], async function(err) {
-        if (err) return res.status(500).json({ error: "Could not save 2FA secret." });
-        try {
-            const qrCodeImage = await qrcode.toDataURL(otpauth);
-            res.json({ qrCode: qrCodeImage, secret });
-        } catch (qrErr) {
-            res.status(500).json({ error: "Could not generate QR code." });
-        }
-    });
-});
+    // Find the recipient user by their email
+    const findRecipientSql = `SELECT * FROM users WHERE email = ?`;
+    db.get(findRecipientSql, [recipientEmail], (err, recipient) => {
+        if (err) return res.status(500).json({ error: "Server error finding recipient." });
+        if (!recipient) return res.status(404).json({ error: "Recipient not found." });
+        if (recipient.id === senderId) return res.status(400).json({ error: "You cannot send money to yourself." });
 
-// --- !! NEW 2FA VERIFY ROUTE !! ---
-// Verify a 2FA token and enable 2FA for the user (Protected)
-app.post('/api/2fa/verify', authMiddleware, (req, res) => {
-    const userId = req.user.id;
-    const { token } = req.body; // The 6-digit code from the user's app
+        const recipientId = recipient.id;
 
-    if (!token) {
-        return res.status(400).json({ error: "Token is required." });
-    }
+        // Perform the transfer within a secure database transaction
+        db.serialize(() => {
+            db.run("BEGIN TRANSACTION");
 
-    const sqlGetSecret = `SELECT two_fa_secret FROM users WHERE id = ?`;
-    db.get(sqlGetSecret, [userId], (err, user) => {
-        if (err || !user || !user.two_fa_secret) {
-            return res.status(500).json({ error: "Could not find 2FA secret. Please generate a new QR code." });
-        }
-
-        const secret = user.two_fa_secret;
-        // Check if the token is valid
-        const isValid = authenticator.verify({ token, secret });
-
-        if (isValid) {
-            // If valid, officially enable 2FA for the user
-            const sqlEnable2FA = `UPDATE users SET two_fa_enabled = TRUE WHERE id = ?`;
-            db.run(sqlEnable2FA, [userId], (err) => {
-                if (err) {
-                    return res.status(500).json({ error: "Could not enable 2FA." });
+            // 1. Check sender's balance
+            const checkBalanceSql = `SELECT balance FROM wallets WHERE user_id = ? AND currency = ?`;
+            db.get(checkBalanceSql, [senderId, currency], (err, senderWallet) => {
+                if (err || !senderWallet || senderWallet.balance < amount) {
+                    db.run("ROLLBACK");
+                    return res.status(400).json({ error: "Insufficient funds." });
                 }
-                res.json({ verified: true, message: "2FA enabled successfully!" });
+
+                // 2. Subtract from sender
+                const subtractSql = `UPDATE wallets SET balance = balance - ? WHERE user_id = ? AND currency = ?`;
+                db.run(subtractSql, [amount, senderId, currency]);
+
+                // 3. Add to recipient
+                const addSql = `UPDATE wallets SET balance = balance + ? WHERE user_id = ? AND currency = ?`;
+                db.run(addSql, [amount, recipientId, currency]);
+
+                // 4. Log transaction for sender
+                const logSenderSql = `INSERT INTO transactions (user_id, type, amount, currency, details) VALUES (?, ?, ?, ?, ?)`;
+                const senderDetails = `Sent to ${recipient.full_name} (${recipientEmail})`;
+                db.run(logSenderSql, [senderId, 'sent', -amount, currency, senderDetails]);
+                
+                // 5. Log transaction for recipient
+                const logRecipientSql = `INSERT INTO transactions (user_id, type, amount, currency, details) VALUES (?, ?, ?, ?, ?)`;
+                const recipientDetails = `Received from ${req.user.email}`; // Assuming email is on req.user
+                db.run(logRecipientSql, [recipientId, 'received', amount, currency, recipientDetails]);
+
+
+                db.run("COMMIT", (err) => {
+                    if (err) {
+                        db.run("ROLLBACK");
+                        return res.status(500).json({ error: "Transfer failed." });
+                    }
+                    res.json({ success: true, message: `Successfully sent ${amount} ${currency} to ${recipientEmail}` });
+                });
             });
-        } else {
-            // If not valid, send an error
-            res.status(400).json({ verified: false, error: "Invalid token." });
-        }
+        });
     });
 });
 
