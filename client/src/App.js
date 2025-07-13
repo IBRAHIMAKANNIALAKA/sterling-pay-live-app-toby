@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 // This line has been cleaned up to only import the icons we actually use.
-import { Globe, LogOut, UserPlus, Home, Repeat, Settings as SettingsIcon } from 'lucide-react';
+import { Globe, LogOut, UserPlus, Home, Repeat, Settings as SettingsIcon, Send } from 'lucide-react';
 
 // --- HELPER to get the auth token ---
 const getAuthToken = () => localStorage.getItem('sterling-pay-token');
@@ -139,7 +139,6 @@ const Dashboard = () => {
 
             try {
                 const config = { headers: { Authorization: `Bearer ${token}` } };
-                // Corrected URL with path
                 const response = await axios.get(`${API_BASE_URL}/api/wallets`, config);
                 setWallets(response.data);
             } catch (err) {
@@ -190,7 +189,6 @@ const TransferPage = () => {
         try {
             const config = { headers: { Authorization: `Bearer ${token}` } };
             const transferData = { recipientEmail, amount: parseFloat(amount), currency };
-            // Corrected URL with path
             const response = await axios.post(`${API_BASE_URL}/api/transfer`, transferData, config);
             setMessage(response.data.message);
             setMessageType('success');
@@ -234,6 +232,7 @@ const TransferPage = () => {
         </div>
     );
 };
+
 
 // --- MAIN APP COMPONENT ---
 const MainApp = ({ onLogout, userEmail }) => {
