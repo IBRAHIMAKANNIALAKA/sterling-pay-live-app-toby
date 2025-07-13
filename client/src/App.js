@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 // This line has been cleaned up to only import the icons we actually use.
-import { Globe, LogOut, UserPlus, Home, FileText, Plus, XCircle, Settings as SettingsIcon } from 'lucide-react';
+import { Globe, LogOut, UserPlus, Home, Repeat, Settings as SettingsIcon } from 'lucide-react';
 
 // --- HELPER to get the auth token ---
 const getAuthToken = () => localStorage.getItem('sterling-pay-token');
@@ -18,7 +18,7 @@ const LoginPage = ({ onLoginSuccess, onNavigateToRegister }) => {
         setLoading(true);
         setError('');
         try {
-            const response = await axios.post('https://sterling-pay-server-final.onrender.com', { email, password });
+            const response = await axios.post('https://sterling-pay-live-app.onrender.com', { email, password });
             onLoginSuccess(response.data.token);
         } catch (err) {
             setError('Invalid email or password. Please try again.');
@@ -75,7 +75,7 @@ const RegisterPage = ({ onNavigateToLogin }) => {
         setError('');
         setSuccess('');
         try {
-            await axios.post('https://sterling-pay-server-final.onrender.com', { fullName, email, password });
+            await axios.post('https://sterling-pay-live-app.onrender.com', { fullName, email, password });
             setSuccess('Registration successful! Please log in.');
             setTimeout(() => {
                 onNavigateToLogin();
@@ -134,7 +134,7 @@ const Dashboard = () => {
 
             try {
                 const config = { headers: { Authorization: `Bearer ${token}` } };
-                const response = await axios.get('https://sterling-pay-server-final.onrender.com', config);
+                const response = await axios.get('https://sterling-pay-live-app.onrender.com', config);
                 setWallets(response.data);
             } catch (err) {
                 console.error("Could not fetch wallets", err);
@@ -155,7 +155,7 @@ const Dashboard = () => {
                 {wallets.map(wallet => (
                     <div key={wallet.currency} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: '#f3f4f6', borderRadius: '8px' }}>
                         <span style={{ fontSize: '1.125rem' }}>
-                            {wallet.currency === 'GBP' ? '🇬🇧' : wallet.currency === 'USD' ? '🇺🇸' : '🇪🇺'} {wallet.currency}
+                            {wallet.currency === 'GBP' ? '🇬🇧' : wallet.currency === 'USD' ? '�🇸' : '🇪🇺'} {wallet.currency}
                         </span>
                         <span style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>
                             {new Intl.NumberFormat('en-GB', { style: 'currency', currency: wallet.currency }).format(wallet.balance)}
@@ -167,128 +167,109 @@ const Dashboard = () => {
     );
 };
 
-// --- INVOICES PAGE COMPONENT ---
-const InvoicesPage = ({ openModal, invoiceListKey }) => {
-    const [invoices, setInvoices] = useState([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        const fetchInvoices = async () => {
-            setLoading(true);
-            const token = getAuthToken();
-            if (!token) { setLoading(false); return; }
-            try {
-                const config = { headers: { Authorization: `Bearer ${token}` } };
-                const response = await axios.get('https://sterling-pay-server-final.onrender.com', config);
-                setInvoices(response.data);
-            } catch (err) {
-                console.error("Could not fetch invoices", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        
-        fetchInvoices();
-    }, [invoiceListKey]);
-
-    return (
-         <div style={{ padding: '40px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <h2 style={{ fontSize: '1.875rem', fontWeight: 'bold', color: '#1f2937' }}>Invoices</h2>
-                <button onClick={openModal} style={{ padding: '10px 16px', backgroundColor: '#0A2342', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Plus size={18} /> New Invoice
-                </button>
-            </div>
-            <div style={{ backgroundColor: 'white', borderRadius: '8px', boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1)' }}>
-                <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
-                    <thead>
-                        <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                            <th style={{ padding: '12px 16px' }}>Client</th>
-                            <th style={{ padding: '12px 16px' }}>Amount</th>
-                            <th style={{ padding: '12px 16px' }}>Due Date</th>
-                            <th style={{ padding: '12px 16px' }}>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {loading ? (
-                            <tr><td colSpan="4" style={{ textAlign: 'center', padding: '16px' }}>Loading invoices...</td></tr>
-                        ) : invoices.length === 0 ? (
-                            <tr><td colSpan="4" style={{ textAlign: 'center', padding: '16px' }}>No invoices found.</td></tr>
-                        ) : (
-                            invoices.map(invoice => (
-                                <tr key={invoice.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                                    <td style={{ padding: '12px 16px', fontWeight: '500' }}>{invoice.client_name}</td>
-                                    <td style={{ padding: '12px 16px' }}>{new Intl.NumberFormat('en-GB', { style: 'currency', currency: invoice.currency }).format(invoice.amount)}</td>
-                                    <td style={{ padding: '12px 16px' }}>{invoice.due_date}</td>
-                                    <td style={{ padding: '12px 16px' }}>
-                                        <span style={{ padding: '4px 8px', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: '600',
-                                            backgroundColor: invoice.status === 'Paid' ? '#dcfce7' : '#fef9c3',
-                                            color: invoice.status === 'Paid' ? '#166534' : '#713f12'
-                                        }}>{invoice.status}</span>
-                                    </td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-};
-
-// --- NEW INVOICE MODAL COMPONENT ---
-const NewInvoiceModal = ({ closeModal, onInvoiceCreated }) => {
-    const [clientName, setClientName] = useState('');
-    const [clientEmail, setClientEmail] = useState('');
-    const [amount, setAmount] = useState('');
-    const [currency, setCurrency] = useState('GBP');
-    const [dueDate, setDueDate] = useState('');
-    const [error, setError] = useState('');
+// --- EXCHANGE PAGE COMPONENT ---
+const ExchangePage = () => {
+    const [wallets, setWallets] = useState([]);
+    const [fromCurrency, setFromCurrency] = useState('GBP');
+    const [toCurrency, setToCurrency] = useState('USD');
+    const [fromAmount, setFromAmount] = useState('');
+    const [toAmount, setToAmount] = useState('');
+    const [rate, setRate] = useState(1.25);
+    const [message, setMessage] = useState('');
+    const [messageType, setMessageType] = useState('');
     const [loading, setLoading] = useState(false);
 
-    const handleSubmit = async (e) => {
+    const exchangeRates = useMemo(() => ({
+        'GBP_USD': 1.25, 'USD_GBP': 0.80,
+        'GBP_EUR': 1.18, 'EUR_GBP': 0.85,
+        'USD_EUR': 0.94, 'EUR_USD': 1.06,
+    }), []);
+
+    const fetchWallets = useCallback(async () => {
+        const token = getAuthToken();
+        if (!token) return;
+        try {
+            const config = { headers: { Authorization: `Bearer ${token}` } };
+            const response = await axios.get('https://sterling-pay-live-app.onrender.com', config);
+            setWallets(response.data);
+        } catch (err) {
+            console.error("Could not fetch wallets", err);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchWallets();
+    }, [fetchWallets]);
+
+    useEffect(() => {
+        const newRate = exchangeRates[`${fromCurrency}_${toCurrency}`] || 0;
+        setRate(newRate);
+        setToAmount(fromAmount ? (fromAmount * newRate).toFixed(2) : '');
+    }, [fromCurrency, toCurrency, fromAmount, exchangeRates]);
+
+    const handleExchange = async (e) => {
         e.preventDefault();
         setLoading(true);
-        setError('');
+        setMessage('');
         const token = getAuthToken();
         try {
             const config = { headers: { Authorization: `Bearer ${token}` } };
-            const invoiceData = { clientName, clientEmail, amount, currency, dueDate };
-            await axios.post('https://sterling-pay-server-final.onrender.com', invoiceData, config);
-            onInvoiceCreated();
-            closeModal();
+            const exchangeData = { fromCurrency, toCurrency, fromAmount: parseFloat(fromAmount) };
+            await axios.post('https://sterling-pay-live-app.onrender.com', exchangeData, config);
+            setMessage('Exchange successful!');
+            setMessageType('success');
+            setFromAmount('');
+            fetchWallets(); 
         } catch (err) {
-            setError('Failed to create invoice. Please check all fields.');
+            setMessage(err.response?.data?.error || 'Exchange failed.');
+            setMessageType('error');
+        } finally {
             setLoading(false);
         }
     };
 
+    const getBalance = (currency) => {
+        const wallet = wallets.find(w => w.currency === currency);
+        return wallet ? wallet.balance : 0;
+    };
+
     return (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-            <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '8px', width: '100%', maxWidth: '500px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                    <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>New Invoice</h3>
-                    <button onClick={closeModal}><XCircle /></button>
-                </div>
-                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <input type="text" placeholder="Client Name" value={clientName} onChange={e => setClientName(e.target.value)} required style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }} />
-                    <input type="email" placeholder="Client Email" value={clientEmail} onChange={e => setClientEmail(e.target.value)} required style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }} />
-                    <div style={{ display: 'flex', gap: '16px' }}>
-                        <input type="number" placeholder="Amount" value={amount} onChange={e => setAmount(e.target.value)} required style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', flex: 1 }} />
-                        <select value={currency} onChange={e => setCurrency(e.target.value)} style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}>
-                            <option>GBP</option>
-                            <option>USD</option>
-                            <option>EUR</option>
-                        </select>
+        <div style={{ padding: '40px' }}>
+            <h2 style={{ fontSize: '1.875rem', fontWeight: 'bold', color: '#1f2937', marginBottom: '24px' }}>Currency Exchange</h2>
+            <div style={{ maxWidth: '600px', backgroundColor: 'white', padding: '24px', borderRadius: '8px', boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1)' }}>
+                <form onSubmit={handleExchange}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.875rem', fontWeight: '500' }}>From</label>
+                            <div style={{ display: 'flex' }}>
+                                <select value={fromCurrency} onChange={e => setFromCurrency(e.target.value)} style={{ padding: '10px', border: '1px solid #ccc', borderRight: 'none', borderRadius: '5px 0 0 5px' }}>
+                                    <option>GBP</option><option>USD</option><option>EUR</option>
+                                </select>
+                                <input type="number" placeholder="0.00" value={fromAmount} onChange={e => setFromAmount(e.target.value)} required style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '0 5px 5px 0', width: '100%' }} />
+                            </div>
+                            <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '4px' }}>Balance: {new Intl.NumberFormat('en-GB', { style: 'currency', currency: fromCurrency }).format(getBalance(fromCurrency))}</p>
+                        </div>
+
+                        <div style={{ textAlign: 'center', color: '#6b7280' }}>
+                            <Repeat size={20} />
+                            <p style={{ fontSize: '0.875rem', fontWeight: '600' }}>Rate: 1 {fromCurrency} = {rate} {toCurrency}</p>
+                        </div>
+                        
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.875rem', fontWeight: '500' }}>To</label>
+                            <div style={{ display: 'flex' }}>
+                                <select value={toCurrency} onChange={e => setToCurrency(e.target.value)} style={{ padding: '10px', border: '1px solid #ccc', borderRight: 'none', borderRadius: '5px 0 0 5px' }}>
+                                    <option>USD</option><option>GBP</option><option>EUR</option>
+                                </select>
+                                <input type="text" value={toAmount} disabled style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '0 5px 5px 0', width: '100%', backgroundColor: '#f3f4f6' }} />
+                            </div>
+                            <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '4px' }}>Balance: {new Intl.NumberFormat('en-GB', { style: 'currency', currency: toCurrency }).format(getBalance(toCurrency))}</p>
+                        </div>
                     </div>
-                    <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }} />
-                    {error && <p style={{ color: 'red', fontSize: '0.875rem' }}>{error}</p>}
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px' }}>
-                        <button type="button" onClick={closeModal} style={{ padding: '10px 16px', borderRadius: '5px', border: '1px solid #ccc' }}>Cancel</button>
-                        <button type="submit" disabled={loading} style={{ padding: '10px 16px', borderRadius: '5px', border: 'none', backgroundColor: '#0A2342', color: 'white', cursor: 'pointer' }}>
-                            {loading ? 'Creating...' : 'Create Invoice'}
-                        </button>
-                    </div>
+                    {message && <p style={{ marginTop: '16px', color: messageType === 'success' ? '#16a34a' : '#ef4444', fontWeight: '500' }}>{message}</p>}
+                    <button type="submit" disabled={loading} style={{ marginTop: '24px', width: '100%', padding: '12px 16px', border: 'none', borderRadius: '8px', color: 'white', backgroundColor: '#0A2342', cursor: 'pointer' }}>
+                        {loading ? 'Exchanging...' : 'Exchange'}
+                    </button>
                 </form>
             </div>
         </div>
@@ -307,7 +288,7 @@ const SettingsPage = () => {
         const token = getAuthToken();
         try {
             const config = { headers: { Authorization: `Bearer ${token}` } };
-            const response = await axios.post('https://sterling-pay-server-final.onrender.com', {}, config);
+            const response = await axios.post('https://sterling-pay-live-app.onrender.com', {}, config);
             setQrCode(response.data.qrCode);
         } catch (err) {
             setMessage('Could not generate QR code. Please try again.');
@@ -321,7 +302,7 @@ const SettingsPage = () => {
         const token = getAuthToken();
         try {
             const config = { headers: { Authorization: `Bearer ${token}` } };
-            const response = await axios.post('https://sterling-pay-server-final.onrender.com', { token: otp }, config);
+            const response = await axios.post('https://sterling-pay-live-app.onrender.com', { token: otp }, config);
             if (response.data.verified) {
                 setMessage('2FA has been enabled successfully!');
                 setMessageType('success');
@@ -372,13 +353,11 @@ const SettingsPage = () => {
 // --- MAIN APP COMPONENT ---
 const MainApp = ({ onLogout, userEmail }) => {
     const [activePage, setActivePage] = useState('dashboard');
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [invoiceListKey, setInvoiceListKey] = useState(0); 
 
     const renderPage = () => {
         switch (activePage) {
             case 'dashboard': return <Dashboard />;
-            case 'invoices': return <InvoicesPage key={invoiceListKey} openModal={() => setIsModalOpen(true)} />;
+            case 'exchange': return <ExchangePage />;
             case 'settings': return <SettingsPage />;
             default: return <Dashboard />;
         }
@@ -386,7 +365,6 @@ const MainApp = ({ onLogout, userEmail }) => {
 
     return (
         <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f9fafb', fontFamily: 'sans-serif' }}>
-            {isModalOpen && <NewInvoiceModal closeModal={() => setIsModalOpen(false)} onInvoiceCreated={() => setInvoiceListKey(prevKey => prevKey + 1)} />}
             <aside style={{ width: '256px', backgroundColor: 'white', borderRight: '1px solid #e5e7eb', padding: '16px', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', marginBottom: '32px' }}>
                     <Globe style={{ color: '#2CA58D' }} size={32}/>
@@ -394,7 +372,7 @@ const MainApp = ({ onLogout, userEmail }) => {
                 </div>
                 <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <button onClick={() => setActivePage('dashboard')} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', borderRadius: '8px', textAlign: 'left', background: activePage === 'dashboard' ? '#0A2342' : 'transparent', color: activePage === 'dashboard' ? 'white' : '#374151' }}><Home size={20} /> Dashboard</button>
-                    <button onClick={() => setActivePage('invoices')} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', borderRadius: '8px', textAlign: 'left', background: activePage === 'invoices' ? '#0A2342' : 'transparent', color: activePage === 'invoices' ? 'white' : '#374151' }}><FileText size={20} /> Invoices</button>
+                    <button onClick={() => setActivePage('exchange')} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', borderRadius: '8px', textAlign: 'left', background: activePage === 'exchange' ? '#0A2342' : 'transparent', color: activePage === 'exchange' ? 'white' : '#374151' }}><Repeat size={20} /> Exchange</button>
                     <button onClick={() => setActivePage('settings')} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', borderRadius: '8px', textAlign: 'left', background: activePage === 'settings' ? '#0A2342' : 'transparent', color: activePage === 'settings' ? 'white' : '#374151' }}><SettingsIcon size={20} /> Settings</button>
                 </nav>
                 <button onClick={onLogout} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', borderRadius: '8px', textAlign: 'left', color: '#4b5563' }}><LogOut size={20} /> Logout</button>

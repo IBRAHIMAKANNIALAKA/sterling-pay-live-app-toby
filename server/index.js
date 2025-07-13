@@ -24,16 +24,18 @@ const db = new sqlite3.Database('./sterlingpay.db', (err) => {
   } else {
     console.log('Connected to the local SQLite database.');
     db.serialize(() => {
+        // Create the users table if it doesn't exist
         db.run(`CREATE TABLE IF NOT EXISTS users (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           full_name TEXT NOT NULL,
           email TEXT NOT NULL UNIQUE,
-          password TEXT NOT NULL,
-          two_fa_secret TEXT,
-          two_fa_enabled BOOLEAN DEFAULT FALSE
+          password TEXT NOT NULL
         )`);
+
+        // This checks for and adds the new columns if they are missing.
         db.run("ALTER TABLE users ADD COLUMN two_fa_secret TEXT", () => {});
         db.run("ALTER TABLE users ADD COLUMN two_fa_enabled BOOLEAN DEFAULT FALSE", () => {});
+        
         db.run(`CREATE TABLE IF NOT EXISTS wallets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -43,14 +45,16 @@ const db = new sqlite3.Database('./sterlingpay.db', (err) => {
         )`);
         db.run(`CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sender_id INTEGER NOT NULL,
-            recipient_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            type TEXT NOT NULL,
             amount REAL NOT NULL,
             currency TEXT NOT NULL,
+            details TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (sender_id) REFERENCES users (id),
-            FOREIGN KEY (recipient_id) REFERENCES users (id)
+            FOREIGN KEY (user_id) REFERENCES users (id)
         )`);
+        db.run("ALTER TABLE transactions ADD COLUMN type TEXT NOT NULL DEFAULT 'transfer'", () => {});
+
         db.run(`CREATE TABLE IF NOT EXISTS invoices (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -91,12 +95,7 @@ const authMiddleware = (req, res, next) => {
 
 // --- API Routes ---
 
-// Test Route (Public)
-app.get('/', (req, res) => {
-  res.send('Welcome to the SterlingPay Pro API!');
-});
-
-// User Registration Route (Public)
+// Public Routes
 app.post('/api/register', async (req, res) => {
   const { fullName, email, password } = req.body;
   if (!fullName || !email || !password) return res.status(400).json({ error: 'Please provide all required fields.' });
@@ -110,7 +109,7 @@ app.post('/api/register', async (req, res) => {
       const currencies = ['GBP', 'USD', 'EUR'];
       const walletSql = `INSERT INTO wallets (user_id, currency, balance) VALUES (?, ?, ?)`;
       currencies.forEach(currency => {
-          const startingBalance = currency === 'GBP' ? 1000 : currency === 'USD' ? 500 : 250;
+          const startingBalance = currency === 'GBP' ? 10000 : currency === 'USD' ? 5000 : 2500;
           db.run(walletSql, [newUserId, currency, startingBalance]);
       });
       res.status(201).json({ id: newUserId, email: email, fullName: fullName });
@@ -120,7 +119,6 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-// User Login Route (Public)
 app.post('/api/login', (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Please provide email and password.' });
@@ -137,7 +135,7 @@ app.post('/api/login', (req, res) => {
   });
 });
 
-// Get Wallets Route (Protected)
+// Protected Routes
 app.get('/api/wallets', authMiddleware, (req, res) => {
     const userId = req.user.id;
     const sql = `SELECT currency, balance FROM wallets WHERE user_id = ?`;
@@ -147,23 +145,33 @@ app.get('/api/wallets', authMiddleware, (req, res) => {
     });
 });
 
-// Invoicing Routes (Protected)
-app.post('/api/invoices', authMiddleware, (req, res) => {
+app.post('/api/exchange', authMiddleware, (req, res) => {
     const userId = req.user.id;
-    const { clientName, clientEmail, amount, currency, dueDate } = req.body;
-    if (!clientName || !clientEmail || !amount || !currency || !dueDate) return res.status(400).json({ error: 'Please provide all required fields for the invoice.' });
-    const sql = `INSERT INTO invoices (user_id, client_name, client_email, amount, currency, due_date) VALUES (?, ?, ?, ?, ?, ?)`;
-    db.run(sql, [userId, clientName, clientEmail, amount, currency, dueDate], function(err) {
-        if (err) return res.status(500).json({ error: 'Could not create invoice.' });
-        res.status(201).json({ id: this.lastID, message: 'Invoice created successfully.' });
-    });
-});
-app.get('/api/invoices', authMiddleware, (req, res) => {
-    const userId = req.user.id;
-    const sql = `SELECT id, client_name, amount, currency, due_date, status FROM invoices WHERE user_id = ? ORDER BY created_at DESC`;
-    db.all(sql, [userId], (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Could not retrieve invoices.' });
-        res.json(rows);
+    const { fromCurrency, toCurrency, fromAmount } = req.body;
+    const exchangeRates = { 'GBP_USD': 1.25, 'USD_GBP': 0.80, 'GBP_EUR': 1.18, 'EUR_GBP': 0.85, 'USD_EUR': 0.94, 'EUR_USD': 1.06 };
+    const rate = exchangeRates[`${fromCurrency}_${toCurrency}`];
+    if (!rate) return res.status(400).json({ error: "Currency exchange not supported." });
+    const toAmount = fromAmount * rate;
+    db.serialize(() => {
+        db.run("BEGIN TRANSACTION");
+        const checkBalanceSql = `SELECT balance FROM wallets WHERE user_id = ? AND currency = ?`;
+        db.get(checkBalanceSql, [userId, fromCurrency], (err, fromWallet) => {
+            if (err || !fromWallet || fromWallet.balance < fromAmount) {
+                db.run("ROLLBACK");
+                return res.status(400).json({ error: "Insufficient funds." });
+            }
+            const updateFromSql = `UPDATE wallets SET balance = balance - ? WHERE user_id = ? AND currency = ?`;
+            db.run(updateFromSql, [fromAmount, userId, fromCurrency]);
+            const updateToSql = `UPDATE wallets SET balance = balance + ? WHERE user_id = ? AND currency = ?`;
+            db.run(updateToSql, [toAmount, userId, toCurrency]);
+            const logSql = `INSERT INTO transactions (user_id, type, amount, currency, details) VALUES (?, ?, ?, ?, ?)`;
+            const details = `Exchanged ${fromAmount} ${fromCurrency} to ${toAmount.toFixed(2)} ${toCurrency}`;
+            db.run(logSql, [userId, 'exchange', fromAmount, fromCurrency, details]);
+            db.run("COMMIT", (err) => {
+                if (err) return res.status(500).json({ error: "Transaction failed." });
+                res.json({ success: true, message: "Exchange successful." });
+            });
+        });
     });
 });
 
