@@ -6,6 +6,9 @@ import { Globe, LogOut, UserPlus, Home, Repeat, Settings as SettingsIcon } from 
 // --- HELPER to get the auth token ---
 const getAuthToken = () => localStorage.getItem('sterling-pay-token');
 
+// --- The Live Server URL ---
+const API_BASE_URL = 'https://sterling-pay-server-final.onrender.com';
+
 // --- LOGIN COMPONENT ---
 const LoginPage = ({ onLoginSuccess, onNavigateToRegister }) => {
     const [email, setEmail] = useState('');
@@ -18,7 +21,8 @@ const LoginPage = ({ onLoginSuccess, onNavigateToRegister }) => {
         setLoading(true);
         setError('');
         try {
-            const response = await axios.post('https://sterling-pay-live-app.onrender.com', { email, password });
+            // Corrected URL with path
+            const response = await axios.post(`${API_BASE_URL}/api/login`, { email, password });
             onLoginSuccess(response.data.token);
         } catch (err) {
             setError('Invalid email or password. Please try again.');
@@ -75,7 +79,8 @@ const RegisterPage = ({ onNavigateToLogin }) => {
         setError('');
         setSuccess('');
         try {
-            await axios.post('https://sterling-pay-live-app.onrender.com', { fullName, email, password });
+            // Corrected URL with path
+            await axios.post(`${API_BASE_URL}/api/register`, { fullName, email, password });
             setSuccess('Registration successful! Please log in.');
             setTimeout(() => {
                 onNavigateToLogin();
@@ -134,7 +139,8 @@ const Dashboard = () => {
 
             try {
                 const config = { headers: { Authorization: `Bearer ${token}` } };
-                const response = await axios.get('https://sterling-pay-live-app.onrender.com', config);
+                // Corrected URL with path
+                const response = await axios.get(`${API_BASE_URL}/api/wallets`, config);
                 setWallets(response.data);
             } catch (err) {
                 console.error("Could not fetch wallets", err);
@@ -155,7 +161,7 @@ const Dashboard = () => {
                 {wallets.map(wallet => (
                     <div key={wallet.currency} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: '#f3f4f6', borderRadius: '8px' }}>
                         <span style={{ fontSize: '1.125rem' }}>
-                            {wallet.currency === 'GBP' ? '🇬🇧' : wallet.currency === 'USD' ? '�🇸' : '🇪🇺'} {wallet.currency}
+                            {wallet.currency === 'GBP' ? '🇬🇧' : wallet.currency === 'USD' ? '🇺🇸' : '🇪🇺'} {wallet.currency}
                         </span>
                         <span style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>
                             {new Intl.NumberFormat('en-GB', { style: 'currency', currency: wallet.currency }).format(wallet.balance)}
@@ -190,7 +196,8 @@ const ExchangePage = () => {
         if (!token) return;
         try {
             const config = { headers: { Authorization: `Bearer ${token}` } };
-            const response = await axios.get('https://sterling-pay-live-app.onrender.com', config);
+            // Corrected URL with path
+            const response = await axios.get(`${API_BASE_URL}/api/wallets`, config);
             setWallets(response.data);
         } catch (err) {
             console.error("Could not fetch wallets", err);
@@ -215,7 +222,8 @@ const ExchangePage = () => {
         try {
             const config = { headers: { Authorization: `Bearer ${token}` } };
             const exchangeData = { fromCurrency, toCurrency, fromAmount: parseFloat(fromAmount) };
-            await axios.post('https://sterling-pay-live-app.onrender.com', exchangeData, config);
+            // Corrected URL with path
+            await axios.post(`${API_BASE_URL}/api/exchange`, exchangeData, config);
             setMessage('Exchange successful!');
             setMessageType('success');
             setFromAmount('');
@@ -288,7 +296,8 @@ const SettingsPage = () => {
         const token = getAuthToken();
         try {
             const config = { headers: { Authorization: `Bearer ${token}` } };
-            const response = await axios.post('https://sterling-pay-live-app.onrender.com', {}, config);
+            // Corrected URL with path
+            const response = await axios.post(`${API_BASE_URL}/api/2fa/generate`, {}, config);
             setQrCode(response.data.qrCode);
         } catch (err) {
             setMessage('Could not generate QR code. Please try again.');
@@ -302,7 +311,8 @@ const SettingsPage = () => {
         const token = getAuthToken();
         try {
             const config = { headers: { Authorization: `Bearer ${token}` } };
-            const response = await axios.post('https://sterling-pay-live-app.onrender.com', { token: otp }, config);
+            // Corrected URL with path
+            const response = await axios.post(`${API_BASE_URL}/api/2fa/verify`, { token: otp }, config);
             if (response.data.verified) {
                 setMessage('2FA has been enabled successfully!');
                 setMessageType('success');
