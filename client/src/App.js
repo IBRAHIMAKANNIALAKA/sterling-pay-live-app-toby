@@ -6,6 +6,9 @@ import { Globe, LogOut, UserPlus, Home, Send } from 'lucide-react';
 // --- HELPER to get the auth token ---
 const getAuthToken = () => localStorage.getItem('sterling-pay-token');
 
+// --- !! YOUR CORRECT LIVE SERVER URL !! ---
+const API_BASE_URL = 'https://sterling-pay-live-app-toby.onrender.com';
+
 // --- LOGIN COMPONENT ---
 const LoginPage = ({ onLoginSuccess, onNavigateToRegister }) => {
     const [email, setEmail] = useState('');
@@ -18,7 +21,8 @@ const LoginPage = ({ onLoginSuccess, onNavigateToRegister }) => {
         setLoading(true);
         setError('');
         try {
-            const response = await axios.post('https://sterling-pay-live-app-toby.onrender.com', { email, password });
+            // Using the correct live URL
+            const response = await axios.post(`${API_BASE_URL}/api/login`, { email, password });
             onLoginSuccess(response.data.token);
         } catch (err) {
             setError('Invalid email or password. Please try again.');
@@ -75,7 +79,8 @@ const RegisterPage = ({ onNavigateToLogin }) => {
         setError('');
         setSuccess('');
         try {
-            await axios.post('https://sterling-pay-live-app-toby.onrender.com', { fullName, email, password });
+            // Corrected URL with path
+            await axios.post(`${API_BASE_URL}/api/register`, { fullName, email, password });
             setSuccess('Registration successful! Please log in.');
             setTimeout(() => {
                 onNavigateToLogin();
@@ -134,7 +139,7 @@ const Dashboard = () => {
 
             try {
                 const config = { headers: { Authorization: `Bearer ${token}` } };
-                const response = await axios.get('https://sterling-pay-live-app-toby.onrender.com', config);
+                const response = await axios.get(`${API_BASE_URL}/api/wallets`, config);
                 setWallets(response.data);
             } catch (err) {
                 console.error("Could not fetch wallets", err);
@@ -184,7 +189,7 @@ const TransferPage = () => {
         try {
             const config = { headers: { Authorization: `Bearer ${token}` } };
             const transferData = { recipientEmail, amount: parseFloat(amount), currency };
-            const response = await axios.post('https://sterling-pay-live-app-toby.onrender.com', transferData, config);
+            const response = await axios.post(`${API_BASE_URL}/api/transfer`, transferData, config);
             setMessage(response.data.message);
             setMessageType('success');
             setRecipientEmail('');
